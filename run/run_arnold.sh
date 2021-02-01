@@ -4,9 +4,10 @@ export http_proxy=http://bj-rd-proxy.byted.org:3128
 export https_proxy=http://bj-rd-proxy.byted.org:3128
 
 export NCCL_IB_DISABLE=0
-export NCCL_IB_HCA=$ARNOLD_RDMA_DEVICE:1
+export NCCL_IB_HCA=mlx5_2
 export NCCL_IB_GID_INDEX=3
 export NCCL_SOCKET_IFNAME=eth0
+export NCCL_DEBUG=INFO
 
 cd $(dirname $0)
 sudo pip install --editable ../ -i https://pypi.doubanio.com/simple
