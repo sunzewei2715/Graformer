@@ -33,6 +33,7 @@ from .lru_cache_dataset import LRUCacheDataset
 from .mask_tokens_dataset import MaskTokensDataset
 from .monolingual_dataset import MonolingualDataset
 from .multi_corpus_sampled_dataset import MultiCorpusSampledDataset
+from .multilingual_token_block_dataset import MultilingualTokenBlockDataset
 from .nested_dictionary_dataset import NestedDictionaryDataset
 from .noising import NoisingDataset
 from .numel_dataset import NumelDataset
@@ -95,6 +96,7 @@ __all__ = [
     "MMapIndexedDataset",
     "MonolingualDataset",
     "MultiCorpusSampledDataset",
+    "MultilingualTokenBlockDataset",
     "NestedDictionaryDataset",
     "NoisingDataset",
     "NumelDataset",

@@ -70,8 +70,9 @@ def main(cfg: FairseqConfig) -> None:
     # Setup task, e.g., translation, language modeling, etc.
     task = tasks.setup_task(cfg.task)
     # Load valid dataset (we load training data below, based on the latest checkpoint)
-    for valid_sub_split in cfg.dataset.valid_subset.split(","):
-        task.load_dataset(valid_sub_split, combine=False, epoch=1)
+    if cfg.dataset.valid_subset.lower() != "none":
+        for valid_sub_split in cfg.dataset.valid_subset.split(","):
+            task.load_dataset(valid_sub_split, combine=False, epoch=1)
 
     assert cfg.criterion, "Please specify criterion to train a model"
 
