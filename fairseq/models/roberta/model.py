@@ -529,13 +529,3 @@ def xlm_architecture(args):
     args.encoder_ffn_embed_dim = getattr(args, "encoder_ffn_embed_dim", 1280 * 4)
     args.encoder_attention_heads = getattr(args, "encoder_attention_heads", 16)
     base_architecture(args)
-
-
-@register_model_architecture("roberta", "roberta_transformer_big_encoder")
-def roberta_large_architecture(args):
-    args.encoder_layers = getattr(args, "encoder_layers", 6)
-    args.encoder_embed_dim = getattr(args, "encoder_embed_dim", 1024)
-    args.encoder_ffn_embed_dim = getattr(args, "encoder_ffn_embed_dim", 4096)
-    args.encoder_attention_heads = getattr(args, "encoder_attention_heads", 16)
-    args.activation_fn = getattr(args, "activation_fn", "relu")
-    base_architecture(args)

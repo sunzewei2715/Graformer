@@ -5,11 +5,16 @@
 
 import logging
 import os
+import torch
+from dataclasses import dataclass, field
+from typing import Optional
 
 import numpy as np
 from fairseq import utils
 from fairseq.data import (
     ConcatDataset,
+    Dictionary,
+    IdDataset,
     MaskTokensDataset,
     NestedDictionaryDataset,
     NumelDataset,
@@ -21,48 +26,105 @@ from fairseq.data import (
     SortDataset,
     TokenBlockDataset,
     data_utils,
+    encoders,
 )
+from fairseq.data.indexed_dataset import get_available_dataset_impl
 from fairseq.data.multilingual.multilingual_utils import LangTokStyle, augment_dictionary, get_lang_tok
-from fairseq.tasks.multilingual_masked_lm import MultiLingualMaskedLMTask, register_task
+from fairseq.dataclass import ChoiceEnum, FairseqDataclass
+from fairseq.tasks import LegacyFairseqTask, register_task
+from omegaconf import II
 
 
+SAMPLE_BREAK_MODE_CHOICES = ChoiceEnum(["none", "complete", "complete_doc", "eos"])
 logger = logging.getLogger(__name__)
 
+@dataclass
+class NewMultiLingualMaskedLMConfig(FairseqDataclass):
+    data: Optional[str] = field(
+        default=None, metadata={"help": "path to data directory"}
+    )
+    sample_break_mode: SAMPLE_BREAK_MODE_CHOICES = field(
+        default="none",
+        metadata={
+            "help": 'If omitted or "none", fills each sample with tokens-per-sample '
+            'tokens. If set to "complete", splits samples only at the end '
+            "of sentence, but may include multiple sentences per sample. "
+            '"complete_doc" is similar but respects doc boundaries. '
+            'If set to "eos", includes only one sentence per sample.'
+        },
+    )
+    tokens_per_sample: int = field(
+        default=1024,
+        metadata={"help": "max number of tokens per sample for LM dataset"},
+    )
+    max_source_positions: Optional[int] = field(
+        default=None, metadata={"help": "max number of tokens in the target sequence"}
+    )
+    mask_prob: float = field(
+        default=0.15,
+        metadata={"help": "probability of replacing a token with mask"},
+    )
+    leave_unmasked_prob: float = field(
+        default=0.1,
+        metadata={"help": "probability that a masked token is unmasked"},
+    )
+    random_token_prob: float = field(
+        default=0.1,
+        metadata={"help": "probability of replacing a token with a random token"},
+    )
+    freq_weighted_replacement: bool = field(
+        default=False,
+        metadata={"help": "sample random replacement words based on word frequencies"},
+    )
+    mask_whole_words: bool = field(
+        default=False,
+        metadata={"help": "mask whole words; you may also want to set --bpe"},
+    )
+    multilang_sampling_alpha: float = field(
+        default=1.0,
+        metadata={"help": "smoothing alpha for sample rations across multiple datasets"},
+    )
+    langs: str = field(
+        default="",
+        metadata={
+            "help": "comma-separated list of languages"
+            'e.g., "train,valid" (default: all dataset splits)'
+        },
+    )
+    lang_tok_style: str = field(
+        default=LangTokStyle.multilingual.value,
+        metadata={
+            "help": "language token styles"
+            'e.g., LangTokStyle.multilingual.value / LangTokStyle.mbart.value'
+        },
+    )
+    encoder_langtok: Optional[str] = field(
+        default=None,
+        metadata={"help": "whether to add language token at the beginning: None/src"},
+    )
+    replace_mask_with_bos: bool = field(
+        default=False,
+        metadata={"help": "whether to replace <mask> with <s>"},
+    )
+    # TODO common vars below add to parent
+    seed: int = II("common.seed")
+    train_subset: str = II("dataset.train_subset")
+    dataset_impl: Optional[ChoiceEnum(get_available_dataset_impl())] = II(
+        "dataset.dataset_impl"
+    )
+    data_buffer_size: int = II("dataset.data_buffer_size")
+    tpu: bool = II("common.tpu")
 
-@register_task("new_multilingual_masked_lm")
-class NewMultiLingualMaskedLMTask(MultiLingualMaskedLMTask):
+
+@register_task("new_multilingual_masked_lm", dataclass=NewMultiLingualMaskedLMConfig)
+class NewMultiLingualMaskedLMTask(LegacyFairseqTask):
     """Task for training masked language models (e.g., BERT, RoBERTa)."""
 
-    @staticmethod
-    def add_args(parser):
-        """Add task-specific arguments to the parser."""
-        MultiLingualMaskedLMTask.add_args(parser)
-        parser.add_argument(
-            "--langs",
-            type=str,
-            default="",
-            help="comma-separated list of languages",
-        )
-        parser.add_argument(
-            "--lang-tok-style",
-            type=str,
-            default=LangTokStyle.multilingual.value,
-            help="language token styles",
-        )
-        parser.add_argument(
-            "--encoder-langtok",
-            type=str,
-            default=None,
-            help="whether to add language token at the beginning: None/src",
-        )
-        parser.add_argument(
-            "--replace-mask-with-bos",
-            action="store_true",
-            help="whether to replace <mask> with <s>",
-        )
-
     def __init__(self, args, dictionary):
-        super().__init__(args, dictionary)
+        super().__init__(args)
+        self.dictionary = dictionary
+        self.seed = args.seed
+
         lang_list = args.langs.split(',')
         augment_dictionary(dictionary, lang_list, args.lang_tok_style)
         self.lang_tok_style = args.lang_tok_style
@@ -73,6 +135,49 @@ class NewMultiLingualMaskedLMTask(MultiLingualMaskedLMTask):
             self.mask_idx = dictionary.bos_index
         else:
             self.mask_idx = dictionary.add_symbol("<mask>")
+
+    @classmethod
+    def setup_task(cls, args, **kwargs):
+        paths = utils.split_paths(args.data)
+        assert len(paths) > 0
+        dictionary = Dictionary.load(os.path.join(paths[0], "dict.txt"))
+        logger.info("dictionary: {} types".format(len(dictionary)))
+        return cls(args, dictionary)
+
+    def _get_whole_word_mask(self):
+        # create masked input and targets
+        if self.args.mask_whole_words:
+            bpe = encoders.build_bpe(self.args)
+            if bpe is not None:
+
+                def is_beginning_of_word(i):
+                    if i < self.source_dictionary.nspecial:
+                        # special elements are always considered beginnings
+                        return True
+                    tok = self.source_dictionary[i]
+                    if tok.startswith("madeupword"):
+                        return True
+                    try:
+                        return bpe.is_beginning_of_word(tok)
+                    except ValueError:
+                        return True
+
+                mask_whole_words = torch.ByteTensor(
+                    list(map(is_beginning_of_word, range(len(self.source_dictionary))))
+                )
+        else:
+            mask_whole_words = None
+        return mask_whole_words
+
+    def _get_sample_prob(self, dataset_lens):
+        """
+        Get smoothed sampling porbability by languages. This helps low resource
+        languages by upsampling them.
+        """
+        prob = dataset_lens / dataset_lens.sum()
+        smoothed_prob = prob ** self.args.multilang_sampling_alpha
+        smoothed_prob = smoothed_prob / smoothed_prob.sum()
+        return smoothed_prob
 
     def load_dataset(self, split, epoch=1, combine=False, **kwargs):
         """Load a given dataset split.
@@ -236,3 +341,39 @@ class NewMultiLingualMaskedLMTask(MultiLingualMaskedLMTask):
                 dataset.sizes,
             ],
         )
+
+    def build_dataset_for_inference(self, src_tokens, src_lengths, sort=True):
+        src_dataset = PadDataset(
+            TokenBlockDataset(
+                src_tokens,
+                src_lengths,
+                self.args.tokens_per_sample - 1,  # one less for <s>
+                pad=self.source_dictionary.pad(),
+                eos=self.source_dictionary.eos(),
+                break_mode="eos",
+            ),
+            pad_idx=self.source_dictionary.pad(),
+            left_pad=False,
+        )
+        src_dataset = PrependTokenDataset(src_dataset, self.source_dictionary.bos())
+        src_dataset = NestedDictionaryDataset(
+            {
+                "id": IdDataset(),
+                "net_input": {
+                    "src_tokens": src_dataset,
+                    "src_lengths": NumelDataset(src_dataset, reduce=False),
+                },
+            },
+            sizes=src_lengths,
+        )
+        if sort:
+            src_dataset = SortDataset(src_dataset, sort_order=[src_lengths])
+        return src_dataset
+
+    @property
+    def source_dictionary(self):
+        return self.dictionary
+
+    @property
+    def target_dictionary(self):
+        return self.dictionary
