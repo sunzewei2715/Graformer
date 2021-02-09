@@ -157,6 +157,7 @@ def load_checkpoint(cfg: CheckpointConfig, trainer, **passthrough_args):
             " or reset_lr_scheduler or reset_meters or reset_dataloader"
         )
 
+    checkpoint_paths = []
     suffix = cfg.checkpoint_suffix
     if (
         cfg.restore_file == "checkpoint_last.pt"
@@ -168,8 +169,9 @@ def load_checkpoint(cfg: CheckpointConfig, trainer, **passthrough_args):
         if cfg.finetune_from_model is not None and first_launch:
             # if there is no last checkpoint to restore, start the finetune from pretrained model
             # else just use usual logic to load checkpoint, e.g. restart from last checkpoint and etc.
-            if PathManager.exists(cfg.finetune_from_model):
-                checkpoint_path = cfg.finetune_from_model
+            finetune_from_models = cfg.finetune_from_model.split(',')
+            if all([PathManager.exists(finetune_from_model) for finetune_from_model in finetune_from_models]):
+                checkpoint_paths = finetune_from_models
                 reset_optimizer = True
                 reset_lr_scheduler = True
                 reset_meters = True
@@ -186,6 +188,8 @@ def load_checkpoint(cfg: CheckpointConfig, trainer, **passthrough_args):
         checkpoint_path = cfg.restore_file.replace(".pt", suffix + ".pt")
     else:
         checkpoint_path = cfg.restore_file
+    if len(checkpoint_paths) == 0:
+        checkpoint_paths.append(checkpoint_path)
 
     if cfg.restore_file != "checkpoint_last.pt" and cfg.finetune_from_model:
         raise ValueError(
@@ -193,13 +197,14 @@ def load_checkpoint(cfg: CheckpointConfig, trainer, **passthrough_args):
             "can not be specified together: " + str(cfg)
         )
 
-    extra_state = trainer.load_checkpoint(
-        checkpoint_path,
-        reset_optimizer,
-        reset_lr_scheduler,
-        optimizer_overrides,
-        reset_meters=reset_meters,
-    )
+    for checkpoint_path in checkpoint_paths:
+        extra_state = trainer.load_checkpoint(
+            checkpoint_path,
+            reset_optimizer,
+            reset_lr_scheduler,
+            optimizer_overrides,
+            reset_meters=reset_meters,
+        )
 
     if (
         extra_state is not None
