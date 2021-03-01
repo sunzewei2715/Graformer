@@ -83,7 +83,7 @@ class BridgeTransformerModel(TransformerModel):
         model_cfg: Optional[DictConfig] = None,
         args: Optional[Namespace] = None,
     ):
-        if self.args.transfer_params is not None:
+        if self.args.transfer_params is not None and "inference" not in vars(model_cfg):
             pretrained_model_prefix = [*state_dict][0].split('.')[0]
             pairs = self.args.transfer_params.split(',')
             for pair in pairs:
