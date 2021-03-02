@@ -231,19 +231,17 @@ class TransformerEncoderModel(FairseqEncoderModel):
         encoder = TransformerEncoder(
             args, task.source_dictionary, embed_tokens
         )
+        encoder.output_projection = nn.Linear(
+            encoder.embed_tokens.weight.shape[1],
+            encoder.embed_tokens.weight.shape[0],
+            bias=False,
+        )
         if args.share_encoder_input_output_embed:
-            encoder.output_projection = nn.Linear(
-                encoder.embed_tokens.weight.shape[1],
-                encoder.embed_tokens.weight.shape[0],
-                bias=False,
-            )
             encoder.output_projection.weight = encoder.embed_tokens.weight
         else:
-            encoder.output_projection = nn.Linear(
-                encoder.output_embed_dim, encoder.embed_tokens.weight.shape[0], bias=False
-            )
             nn.init.normal_(
-                encoder.output_projection.weight, mean=0, std=encoder.output_embed_dim ** -0.5
+                encoder.output_projection.weight,
+                mean=0, std=encoder.embed_tokens.weight.shape[1] ** -0.5
             )
         return cls(encoder)
 
@@ -254,7 +252,7 @@ class TransformerEncoderModel(FairseqEncoderModel):
 
     def get_normalized_probs(self, net_output, log_probs, sample=None):
         """Get normalized probabilities (or log probs) from a net's output."""
-        encoder_out = net_output["encoder_out"][0]
+        encoder_out = net_output["encoder_out"][0].transpose(0, 1)
         encoder_out = self.encoder.output_projection(encoder_out)
 
         if torch.is_tensor(encoder_out):
