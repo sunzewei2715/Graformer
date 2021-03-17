@@ -73,6 +73,8 @@ class TransducerTransformerModel(TransformerModel):
                             help='pretrained_encoder ')
         parser.add_argument('--pretrained-decoder', type=str, metavar='D', default=None,
                             help='pretrained_decoder ')
+        parser.add_argument("--lm-fusion", action="store_true", default=False,
+                            help="whether to fusion lm")
 
     @classmethod
     def build_encoder(cls, args, src_dict, embed_tokens):
@@ -208,7 +210,61 @@ class TransducerTransformerDecoder(TransformerDecoder):
         if args.pretrained_decoder is not None:
             model_name = args.pretrained_decoder
             self.pretrained_decoder_model = AutoModel.from_pretrained(model_name)
-            self.output_projection.weight = self.pretrained_decoder_model.wte.weight
+            self.lm_output_projection = None
+            if args.lm_fusion:
+                self.lm_output_projection = nn.Linear(
+                    self.embed_tokens.weight.shape[1],
+                    self.embed_tokens.weight.shape[0],
+                    bias=False,
+                )
+                self.lm_output_projection.weight = self.pretrained_decoder_model.wte.weight
+            else:
+                self.output_projection.weight = self.pretrained_decoder_model.wte.weight
+
+    def forward(
+        self,
+        prev_output_tokens,
+        encoder_out: Optional[Dict[str, List[Tensor]]] = None,
+        incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
+        features_only: bool = False,
+        full_context_alignment: bool = False,
+        alignment_layer: Optional[int] = None,
+        alignment_heads: Optional[int] = None,
+        src_lengths: Optional[Any] = None,
+        return_all_hiddens: bool = False,
+    ):
+        """
+        Args:
+            prev_output_tokens (LongTensor): previous decoder outputs of shape
+                `(batch, tgt_len)`, for teacher forcing
+            encoder_out (optional): output from the encoder, used for
+                encoder-side attention
+            incremental_state (dict): dictionary used for storing state during
+                :ref:`Incremental decoding`
+            features_only (bool, optional): only return features without
+                applying output layer (default: False).
+            full_context_alignment (bool, optional): don't apply
+                auto-regressive mask to self-attention (default: False).
+
+        Returns:
+            tuple:
+                - the decoder's output of shape `(batch, tgt_len, vocab)`
+                - a dictionary with any model-specific outputs
+        """
+        x, extra = self.extract_features(
+            prev_output_tokens,
+            encoder_out=encoder_out,
+            incremental_state=incremental_state,
+            full_context_alignment=full_context_alignment,
+            alignment_layer=alignment_layer,
+            alignment_heads=alignment_heads,
+        )
+        if not features_only:
+            x = self.output_layer(x)
+            if self.lm_output_projection:
+                lm_state = self.lm_output_projection(extra['lm_state'])
+                x = x + lm_state
+        return x, extra
 
     def extract_features_scriptable(
         self,
@@ -255,9 +311,10 @@ class TransducerTransformerDecoder(TransformerDecoder):
             if positions is not None:
                 positions = positions[:, -1:]
 
+        lm_state = None
         if self.pretrained_decoder_model is not None:
             x = self.pretrained_decoder_model(prev_output_tokens).last_hidden_state
-            encoder_embedding = x
+            lm_state = x
         else:
             # embed tokens and positions
             x = self.embed_scale * self.embed_tokens(prev_output_tokens)
@@ -329,7 +386,7 @@ class TransducerTransformerDecoder(TransformerDecoder):
         if self.project_out_dim is not None:
             x = self.project_out_dim(x)
 
-        return x, {"attn": [attn], "inner_states": inner_states}
+        return x, {"attn": [attn], "inner_states": inner_states, "lm_state": lm_state}
 
 
 @register_model_architecture("transducer_transformer_model", "transducer_transformer_base")
