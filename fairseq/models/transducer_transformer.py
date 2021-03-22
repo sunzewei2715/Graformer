@@ -153,7 +153,7 @@ class TransducerTransformerEncoder(TransformerEncoder):
         """
         if self.pretrained_encoder_model is not None:
             attention_mask = torch.arange(src_lengths.max()).cuda()[None, :] < src_lengths[:, None]
-            inputs = {'input_ids': src_tokens, 'attention_mask':attention_mask}
+            inputs = {'input_ids': src_tokens, 'attention_mask': attention_mask}
             x = self.pretrained_encoder_model(**inputs).last_hidden_state
             encoder_embedding = x
         else:
@@ -207,10 +207,10 @@ class TransducerTransformerDecoder(TransformerDecoder):
     def __init__(self, args, dictionary, embed_tokens):
         super().__init__(args, dictionary, embed_tokens)
         self.pretrained_decoder_model = None
+        self.lm_output_projection = None
         if args.pretrained_decoder is not None:
             model_name = args.pretrained_decoder
             self.pretrained_decoder_model = AutoModel.from_pretrained(model_name)
-            self.lm_output_projection = None
             if args.lm_fusion:
                 self.lm_output_projection = nn.Linear(
                     self.embed_tokens.weight.shape[1],
