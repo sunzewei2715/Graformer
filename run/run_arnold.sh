@@ -10,7 +10,7 @@ export NCCL_SOCKET_IFNAME=eth0
 export NCCL_DEBUG=INFO
 
 cd $(dirname $0)
-sudo pip install --editable ../ -i https://pypi.doubanio.com/simple
+sudo pip install --editable ../ -i https://pypi.tuna.tsinghua.edu.cn/simple
 
 cd /opt/tiger/fairseq/run
 echo "current dir: `pwd`"
