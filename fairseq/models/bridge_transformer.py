@@ -175,7 +175,7 @@ class BridgeTransformerDecoder(TransformerDecoder):
             alignment_heads=alignment_heads,
         )
         if not features_only:
-            x = self.output_layer(x)
+            x = self.lm_output_projection(x)
             if self.lm_output_projection:
                 lm_state = self.lm_output_projection(extra['lm_state'])
                 x = x + lm_state
