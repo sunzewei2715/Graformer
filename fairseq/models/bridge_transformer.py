@@ -126,8 +126,15 @@ class BridgeTransformerDecoder(TransformerDecoder):
             ]
         )
         self.lm_layer_norm = None
+        self.lm_output_projection = None
         if args.lm_fusion:
             self.lm_layer_norm = LayerNorm(self.embed_tokens.embedding_dim)
+            self.lm_output_projection = nn.Linear(
+                self.embed_tokens.weight.shape[1],
+                self.embed_tokens.weight.shape[0],
+                bias=False,
+            )
+            self.lm_output_projection.weight = self.embed_tokens.weight
 
     def forward(
         self,
@@ -168,9 +175,9 @@ class BridgeTransformerDecoder(TransformerDecoder):
             alignment_heads=alignment_heads,
         )
         if not features_only:
-            x = self.output_projection(x)
-            if self.lm_layer_norm:
-                lm_state = self.output_projection(extra['lm_state'])
+            x = self.output_layer(x)
+            if self.lm_output_projection:
+                lm_state = self.lm_output_projection(extra['lm_state'])
                 x = x + lm_state
         return x, extra
 
