@@ -5,7 +5,7 @@ The repository for the paper: **Multilingual Translation via Grafting Pre-traine
 **GraftTransformer** (also named BridgeTransformer in the code) is a sequence-to-sequence model mainly for Neural Machine Translation. We improve the multilingual translation by taking advantage of pre-trained NLP models, including pre-trained encoder (**BERT**) and pre-trained decoder (**GPT**). The code is based on [Fairseq](https://github.com/pytorch/fairseq).
 
 ### examples
-You can start with scripts in *run/arnold.sh*, with:
+You can start with *run/run_arnold.sh*, with some minor modification. The corresponding scripts represent:
 ```
 train a pre-trained BERT:
     run_arnold_multilingual_masked_lm_6e6d.sh

@@ -1,8 +1,5 @@
 #!/bin/bash
 
-export http_proxy=http://bj-rd-proxy.byted.org:3128
-export https_proxy=http://bj-rd-proxy.byted.org:3128
-
 export NCCL_IB_DISABLE=0
 export NCCL_IB_HCA=mlx5_2
 export NCCL_IB_GID_INDEX=3
