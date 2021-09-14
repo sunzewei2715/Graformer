@@ -1,6 +1,6 @@
 # Graformer
 
-The repository for the paper: **Multilingual Translation via Grafting Pre-trained Language Models**
+The repository for the paper: [Multilingual Translation via Grafting Pre-trained Language Models](https://arxiv.org/abs/2109.05256)
 
 **Graformer** (also named BridgeTransformer in the code) is a sequence-to-sequence model mainly for Neural Machine Translation. We improve the multilingual translation by taking advantage of pre-trained (masked) language models, including pre-trained encoder (**BERT**) and pre-trained decoder (**GPT**). The code is based on [Fairseq](https://github.com/pytorch/fairseq).
 
