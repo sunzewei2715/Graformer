@@ -35,7 +35,7 @@ Please cite as:
 @inproceedings{sun2021mulilingual,
     title = "Multilingual Translation via Grafting Pre-trained Language Models",
     author = "Sun, Zewei and Wang, Mingxuan and Li, Lei",
-    booktitle = "Findings of the Association for Computational Linguistics: EMNLP 2021",
+    booktitle = "Proceedings of the 2021 Conference on Empirical Methods in Natural Language Processing: Findings",
     year = "2021"
 }
 ```
